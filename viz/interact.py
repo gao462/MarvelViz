@@ -1,11 +1,11 @@
 import numpy as np
 from bokeh.models import ColumnDataSource
-# Plot, Title, Range1d, LegendItem, Legend
 from bokeh.plotting import figure
 from bokeh.palettes import *
-from bokeh.models import Wedge
-from bokeh.models.widgets import Div, CheckboxGroup, Slider, RangeSlider
+from bokeh.models import LabelSet
+from bokeh.models.widgets import Div, CheckboxGroup, Slider, RangeSlider, Panel, Tabs
 from bokeh.layouts import row, column
+from decimal import Decimal
 from .plot import GraphViz
 
 class GraphWidget(object):
@@ -22,10 +22,10 @@ class GraphWidget(object):
     RNG_SLDR_H = 30
 
     PIE_W = 300
-    PIE_H = 300
+    PIE_H = 250
 
     BAR_W = 300
-    BAR_H = 300
+    BAR_H = 250
 
     def __init__(self, viz):
         r"""Initialize the class
@@ -60,6 +60,7 @@ class GraphWidget(object):
         self.range_slider_()
 
         # deploy pie and bar chart
+        self.bin_()
         self.pie_()
         self.bar_()
 
@@ -67,9 +68,8 @@ class GraphWidget(object):
         layout_widget = column(
             children=[self.layout_checkbox, self.layout_slider, self.layout_range_slider])
         layout_graph = row(children=[self.viz.layout, layout_widget])
-        # layout_info = column(children=[self.layout_pie, self.layout_bar])
-        layout_info = self.layout_pie
-        self.layout = row(children=[layout_info, layout_graph])
+        layout_info = column(children=[self.layout_pie, self.layout_bar])
+        self.layout = column(children=[layout_graph, layout_info])
 
     def bipercent(self, data, col, label=None, mode=None, percents=(0, 100)):
         r"""Bipartite data of given label on given column using given percentages
@@ -180,14 +180,14 @@ class GraphWidget(object):
         self.select_lock = True
 
         # update the lastest selection statistics
-        self.select_to_pie(self.node_source.selected.indices[-1])
+        self.select_to_pie_bar(self.node_source.selected.indices[-1])
 
         # get all adjacent neighbors of all selections
         roots = set(self.node_source.selected.indices)
         children = set([])
         for root in roots:
             leaves = self.adj_source[root]
-            for leaf in leaves:
+            for _, leaf in leaves:
                 children.add(leaf)
         
         # update selections
@@ -196,8 +196,8 @@ class GraphWidget(object):
         # unlock selection
         self.select_lock = False
 
-    def select_to_pie(self, idx):
-        r"""Update pie chart source by given index
+    def select_to_pie_bar(self, idx):
+        r"""Update pie and bar chart source by given index
         
         Args
         ----
@@ -206,52 +206,68 @@ class GraphWidget(object):
 
         """
         # fresh count buffer
+        cnt_n_cont = [0 for i in range(8)]
+        cnt_n_coop = [0 for i in range(8)]
         cnt_n_appear = [0 for i in range(8)]
         cnt_n_know = [0 for i in range(8)]
 
         # update count
-        for itr in self.adj_source[idx]:
-            label = self.node_data['label'].iloc[itr]
-            if label == 'comic':
-                val = self.node_data['#appear'].iloc[itr]
-                for i in range(1, 9):
-                    if self.bin_n_appear[i - 1] >= val and val > self.bin_n_appear[i]:
-                        cnt_n_appear[i - 1] += 1
+        for itr_e, itr_n in self.adj_source[idx]:
+            mode = self.edge_data['mode'].iloc[itr_e]
+            label = self.node_data['label'].iloc[itr_n]
+            edge_iters = dict(
+                appear=('cont', self.bin_n_cont, cnt_n_cont),
+                know  =('coop', self.bin_n_coop, cnt_n_coop))
+            node_iters = dict(
+                comic=('#appear', self.bin_n_appear, cnt_n_appear),
+                hero =('#know'  , self.bin_n_know  , cnt_n_know  ))
+            iter_list = [
+                [self.edge_data, itr_e] + list(edge_iters[mode] ),
+                [self.node_data, itr_n] + list(node_iters[label])]
+            for data, itr, col, bin_n, cnt_n in iter_list:
+                val = data[col].iloc[itr]
+                for i in range(1, len(bin_n)):
+                    if bin_n[i - 1] >= val and (val > bin_n[i] or i == len(bin_n) - 1):
+                        cnt_n[i - 1] += 1
+                        break
                     else:
                         pass
-            elif label == 'hero':
-                val = self.node_data['#know'].iloc[itr]
-                for i in range(1, 9):
-                    if self.bin_n_know[i - 1] >= val and val > self.bin_n_know[i]:
-                        cnt_n_know[i - 1] += 1
-                    else:
-                        pass
-            else:
-                raise RuntimeError()
 
         # project bin count to angle space
+        angle_space_n_cont   = [0]
+        angle_space_n_coop   = [0]
         angle_space_n_appear = [0]
-        angle_space_n_know = [0]
-        for val in cnt_n_appear:
-            angle_space_n_appear.append(angle_space_n_appear[-1] + val)
-        angle_space_n_appear[-1] = max(angle_space_n_appear[-1], 1)
-        for val in cnt_n_know:
-            angle_space_n_know.append(angle_space_n_know[-1] + val)
-        angle_space_n_know[-1] = max(angle_space_n_know[-1], 1)
-        for i in range(len(angle_space_n_appear)):
-            angle_space_n_appear[i] /= angle_space_n_appear[-1]
-            angle_space_n_appear[i] *= (2 * np.pi)
-        for i in range(len(angle_space_n_know)):
-            angle_space_n_know[i] /= angle_space_n_know[-1]
-            angle_space_n_know[i] *= (2 * np.pi)
+        angle_space_n_know   = [0]
+        iter_list = [
+            (cnt_n_cont  , angle_space_n_cont  ),
+            (cnt_n_coop  , angle_space_n_coop  ),
+            (cnt_n_appear, angle_space_n_appear),
+            (cnt_n_know  , angle_space_n_know  )]
+        for cnt_n, angle_space_n in iter_list: 
+            for val in cnt_n:
+                angle_space_n.append(angle_space_n[-1] + val)
+            angle_space_n[-1] = max(angle_space_n[-1], 1)
+            for i in range(len(angle_space_n)):
+                angle_space_n[i] /= angle_space_n[-1]
+                angle_space_n[i] *= (2 * np.pi)
 
         # update the whole data source
+        self.pie_source_n_cont.patch(dict(
+            start_angle=[(slice(8), angle_space_n_cont[0:8])],
+            end_angle=[(slice(8), angle_space_n_cont[1:9])]))
+        self.pie_source_n_coop.patch(dict(
+            start_angle=[(slice(8), angle_space_n_coop[0:8])],
+            end_angle=[(slice(8), angle_space_n_coop[1:9])]))
         self.pie_source_n_appear.patch(dict(
             start_angle=[(slice(8), angle_space_n_appear[0:8])],
             end_angle=[(slice(8), angle_space_n_appear[1:9])]))
         self.pie_source_n_know.patch(dict(
             start_angle=[(slice(8), angle_space_n_know[0:8])],
             end_angle=[(slice(8), angle_space_n_know[1:9])]))
+        self.bar_source_n_cont.patch(dict(count=[(slice(8), cnt_n_cont)]))
+        self.bar_source_n_coop.patch(dict(count=[(slice(8), cnt_n_coop)]))
+        self.bar_source_n_appear.patch(dict(count=[(slice(8), cnt_n_appear)]))
+        self.bar_source_n_know.patch(dict(count=[(slice(8), cnt_n_know)]))
 
     def update(self):
         r"""Update data source based on widget states"""
@@ -270,6 +286,14 @@ class GraphWidget(object):
         for mode in self.slider_edge:
             ratio = np.exp2(self.slider_edge[mode].value)
             edge_data.loc[edge_data['mode'] == mode, ':width'] *= ratio
+
+        # also manually update ratio of edge width in personal info legend
+        ratio = np.exp2(self.slider_edge['appear'].value)
+        new_width = np.linspace(16, 2, num=8, endpoint=True) * ratio
+        self.pie_source_n_cont.patch(dict(line_width=[(slice(8), new_width)]))
+        ratio = np.exp2(self.slider_edge['know'].value)
+        new_width = np.linspace(16, 2, num=8, endpoint=True) * ratio
+        self.pie_source_n_coop.patch(dict(line_width=[(slice(8), new_width)]))
 
         # --------------------------------------------------------------------------------
 
@@ -430,34 +454,88 @@ class GraphWidget(object):
                 self.range_slider_sign, self.range_slider_pr, self.range_slider_cont,
                 self.range_slider_coop])
 
-    def pie_(self):
-        r"""Deploy pie chart"""
+    def bin_(self):
+        """Deploy bins of personal info charts"""
         # divide pie chart space into bins
+        self.bin_n_cont = self.cut_bins(8, data=self.edge_data, col='cont', mode='appear')
+        self.bin_n_coop = self.cut_bins(8, data=self.edge_data, col='coop', mode='know')
         self.bin_n_appear = self.cut_bins(8, data=self.node_data, col='#appear', label='comic')
         self.bin_n_know = self.cut_bins(8, data=self.node_data, col='#know', label='hero')
+        self.bin_n_sign = self.cut_bins(8, data=self.node_data, col='sign', label='comic')
+        self.bin_n_pr = self.cut_bins(8, data=self.node_data, col='pr', label='hero')
+        self.bin_n_cont.reverse()
+        self.bin_n_coop.reverse()
         self.bin_n_appear.reverse()
         self.bin_n_know.reverse()
+        self.bin_n_sign.reverse()
+        self.bin_n_pr.reverse()
 
+    def pie_(self):
+        r"""Deploy pie chart"""
         # allocate pie source
         equal_space = np.linspace(0, 2 * np.pi, num=9, endpoint=True)
+        self.pie_source_n_cont = ColumnDataSource(dict(
+            xs=[(0, 0)] * 8, ys=[(0, 0)] * 8, line_width=np.linspace(16, 2, num=8, endpoint=True),
+            start_angle=equal_space[0:8], end_angle=equal_space[1:9],
+            fill_color=['black'] * 8, fill_alpha=np.linspace(0.85, 0.35, num=8, endpoint=True),
+            legend=["<= {:.2E}".format(Decimal(self.bin_n_cont[i])) for i in range(8)]))
+        self.pie_source_n_coop = ColumnDataSource(dict(
+            xs=[(0, 0)] * 8, ys=[(0, 0)] * 8, line_width=np.linspace(16, 2, num=8, endpoint=True),
+            start_angle=equal_space[0:8], end_angle=equal_space[1:9],
+            fill_color=['black'] * 8, fill_alpha=np.linspace(0.85, 0.35, num=8, endpoint=True),
+            legend=["<= {:.2f}".format(self.bin_n_coop[i]) for i in range(8)]))
         self.pie_source_n_appear = ColumnDataSource(dict(
-            start_angle=equal_space[0:8], end_angle=equal_space[1:9], fill_color=Greens9[0:8],
-            legend=["<= {:.1f}".format(self.bin_n_appear[i]) for i in range(8)]))
+            start_angle=equal_space[0:8], end_angle=equal_space[1:9], fill_color=BuGn9[0:8],
+            legend=["<= {:.2f}".format(self.bin_n_appear[i]) for i in range(8)]))
         self.pie_source_n_know = ColumnDataSource(dict(
-            start_angle=equal_space[0:8], end_angle=equal_space[1:9], fill_color=Reds9[0:8],
-            legend=["<= {:.1f}".format(self.bin_n_know[i]) for i in range(8)]))
+            start_angle=equal_space[0:8], end_angle=equal_space[1:9], fill_color=YlOrRd9[0:8],
+            legend=["<= {:.2f}".format(self.bin_n_know[i]) for i in range(8)]))
 
         # create canvas
+        fig_n_cont = figure(
+            width=self.PIE_W, height=self.PIE_H,
+            title='Contribution Dist. in \"Comics Appears\"',
+            x_range=(-1.2, 3.2), y_range=(-1.2, 1.2), toolbar_location=None)
+        fig_n_coop = figure(
+            width=self.PIE_W, height=self.PIE_H,
+            title='Cooperation Dist. with \"Heros Knows\"',
+            x_range=(-1.2, 3.2), y_range=(-1.2, 1.2), toolbar_location=None)
         fig_n_appear = figure(
-            width=self.PIE_W, height=self.PIE_H, title='Comic #Appear Dist.',
-            x_range=(-1.2, 2.2), y_range=(-1.2, 1.2), toolbar_location=None)
+            width=self.PIE_W, height=self.PIE_H,
+            title='#Appear Dist. of \"Comics Appears\"',
+            x_range=(-1.2, 3.2), y_range=(-1.2, 1.2), toolbar_location=None)
         fig_n_know = figure(
-            width=self.PIE_W, height=self.PIE_H, title='Hero #Know Dist.',
-            x_range=(-1.2, 2.2), y_range=(-1.2, 1.2), toolbar_location=None)
+            width=self.PIE_W, height=self.PIE_H,
+            title='#Know Dist. of \"Heros Knows\"',
+            x_range=(-1.2, 3.2), y_range=(-1.2, 1.2), toolbar_location=None)
+        fig_n_cont.axis.visible = False
+        fig_n_coop.axis.visible = False
         fig_n_appear.axis.visible = False
         fig_n_know.axis.visible = False
+        fig_n_cont.grid.visible = False
+        fig_n_coop.grid.visible = False
+        fig_n_appear.grid.visible = False
+        fig_n_know.grid.visible = False
+
+        # specify edge related legend
+        fig_n_cont.multi_line(
+            xs='xs', ys='ys',  line_width='line_width',
+            line_color='fill_color', line_alpha='fill_alpha',
+            source=self.pie_source_n_cont, legend='legend')
+        fig_n_coop.multi_line(
+            xs='xs', ys='ys',  line_width='line_width',
+            line_color='fill_color', line_alpha='fill_alpha',
+            source=self.pie_source_n_coop, legend='legend')
 
         # create pie chart
+        pie_n_cont = fig_n_cont.wedge(
+            x=0, y=0, radius=1, start_angle='start_angle', end_angle='end_angle',
+            fill_color='fill_color', fill_alpha='fill_alpha', line_color='white',
+            source=self.pie_source_n_cont)
+        pie_n_coop = fig_n_coop.wedge(
+            x=0, y=0, radius=1, start_angle='start_angle', end_angle='end_angle',
+            fill_color='fill_color', fill_alpha='fill_alpha', line_color='white',
+            source=self.pie_source_n_coop)
         pie_n_appear = fig_n_appear.wedge(
             x=0, y=0, radius=1, start_angle='start_angle', end_angle='end_angle',
             fill_color='fill_color', source=self.pie_source_n_appear, legend='legend',
@@ -468,12 +546,117 @@ class GraphWidget(object):
             line_color='white')
 
         # reset legend location
+        fig_n_cont.legend.location = 'center_right'
+        fig_n_coop.legend.location = 'center_right'
         fig_n_appear.legend.location = 'center_right'
         fig_n_know.legend.location = 'center_right'
 
         # configure layout
-        self.layout_pie = column(children=[fig_n_appear, fig_n_know])
+        self.layout_pie = row(children=[fig_n_appear, fig_n_cont, fig_n_know, fig_n_coop])
 
     def bar_(self):
         r"""Deploy bar chart"""
-        pass
+        # allocate pie source
+        zero_space = np.zeros(shape=(8,))
+        self.bar_source_n_cont = ColumnDataSource(dict(
+            count=zero_space, fill_color=['black'] * 8,
+            fill_alpha=np.linspace(0.85, 0.35, num=8, endpoint=True),
+            name=["<= {:2E}".format(Decimal(self.bin_n_cont[i])) for i in range(8)]))
+        self.bar_source_n_coop = ColumnDataSource(dict(
+            count=zero_space, fill_color=['black'] * 8,
+            fill_alpha=np.linspace(0.85, 0.35, num=8, endpoint=True),
+            name=["<= {:.2f}".format(self.bin_n_coop[i]) for i in range(8)]))
+        self.bar_source_n_appear = ColumnDataSource(dict(
+            count=zero_space, fill_color=BuGn9[0:8],
+            name=["<= {:.2f}".format(self.bin_n_appear[i]) for i in range(8)]))
+        self.bar_source_n_know = ColumnDataSource(dict(
+            count=zero_space, fill_color=YlOrRd9[0:8],
+            name=["<= {:.2f}".format(self.bin_n_know[i]) for i in range(8)]))
+
+        # create canvas
+        fig_n_cont = figure(
+            width=self.BAR_W, height=self.BAR_H,
+            title='Contribution Count in \"Comics Appears\"',
+            x_range=self.bar_source_n_cont.data['name'], y_range=(0, 45),
+            toolbar_location=None)
+        fig_n_coop = figure(
+            width=self.BAR_W, height=self.BAR_H,
+            title='Cooperation Count with \"Heros Knows\"',
+            x_range=self.bar_source_n_coop.data['name'], y_range=(0, 100),
+            toolbar_location=None)
+        fig_n_appear = figure(
+            width=self.BAR_W, height=self.BAR_H,
+            title='#Appear Count of \"Comics Appears\"',
+            x_range=self.bar_source_n_appear.data['name'], y_range=(0, 45),
+            toolbar_location=None)
+        fig_n_know = figure(
+            width=self.BAR_W, height=self.BAR_H,
+            title='#Know Count of \"Heros Knows\"',
+            x_range=self.bar_source_n_know.data['name'], y_range=(0, 45),
+            toolbar_location=None)
+        fig_n_cont.xaxis.visible = False
+        fig_n_coop.xaxis.visible = False
+        fig_n_appear.xaxis.visible = False
+        fig_n_know.xaxis.visible = False
+        fig_n_cont.xgrid.visible = False
+        fig_n_coop.xgrid.visible = False
+        fig_n_appear.xgrid.visible = False
+        fig_n_know.xgrid.visible = False
+
+        # create bar chart
+        bar_n_cont = fig_n_cont.vbar(
+            x='name', top='count', width=0.85, fill_color='fill_color', fill_alpha='fill_alpha',
+            line_color='white', source=self.bar_source_n_cont)
+        bar_n_coop = fig_n_coop.vbar(
+            x='name', top='count', width=0.85, fill_color='fill_color', fill_alpha='fill_alpha',
+            line_color='white', source=self.bar_source_n_coop)
+        bar_n_appear = fig_n_appear.vbar(
+            x='name', top='count', width=0.85, fill_color='fill_color', line_color='white',
+            source=self.bar_source_n_appear)
+        bar_n_know = fig_n_know.vbar(
+            x='name', top='count', width=0.85, fill_color='fill_color', line_color='white',
+            source=self.bar_source_n_know)
+        
+        # create label
+        label_n_cont = LabelSet(
+            x='name', y='count', text='count', level='glyph', x_offset=0, y_offset=0,
+            source=self.bar_source_n_cont, render_mode='canvas', text_align='center')
+        label_n_coop = LabelSet(
+            x='name', y='count', text='count', level='glyph', x_offset=0, y_offset=0,
+            source=self.bar_source_n_coop, render_mode='canvas', text_align='center')
+        label_n_appear = LabelSet(
+            x='name', y='count', text='count', level='glyph', x_offset=0, y_offset=0,
+            source=self.bar_source_n_appear, render_mode='canvas', text_align='center')
+        label_n_know = LabelSet(
+            x='name', y='count', text='count', level='glyph', x_offset=0, y_offset=0,
+            source=self.bar_source_n_know, render_mode='canvas', text_align='center')
+
+        # configure layout
+        fig_n_cont.add_layout(label_n_cont)
+        fig_n_coop.add_layout(label_n_coop)
+        fig_n_appear.add_layout(label_n_appear)
+        fig_n_know.add_layout(label_n_know)
+        self.layout_bar = row(children=[fig_n_appear, fig_n_cont, fig_n_know, fig_n_coop])
+
+class BiGraphWidget(object):
+    # constants
+
+    def __init__(self, major_inter, minor_inter):
+        r"""Initialize the class
+
+        Args
+        ----
+        major_inter : GraphWidget
+            Interactive graph and widget visualization of major network.
+        minor_inter : GraphWidget
+            Interactive graph and widget visualization of minor network.
+
+        """
+        # aggregate two graph layout
+        self.major_inter = major_inter
+        self.minor_inter = minor_inter
+        layout_tab = Tabs(tabs=[
+            Panel(child=self.major_inter.layout, title="Majority"),
+            Panel(child=self.minor_inter.layout, title="Minority")])
+
+        self.layout = layout_tab

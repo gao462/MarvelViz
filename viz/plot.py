@@ -87,6 +87,14 @@ class GraphViz(object):
         self.int2node = self.renderer.node_renderer.data_source.data['index']
         self.node2int = {idx: i for i, idx in enumerate(self.int2node)}
 
+    def get_edge_source_id(self):
+        r"""Get data source indices of all edges in the graph"""
+        # get requiring content
+        self.int2edge = list(zip(
+            self.renderer.edge_renderer.data_source.data['start'],
+            self.renderer.edge_renderer.data_source.data['end']))
+        self.edge2int = {(idx1, idx2): i for i, (idx1, idx2) in enumerate(self.int2edge)}
+
     def get_adj_source_id(self):
         r"""Get adjacent nodes info in source data"""
         # allocate link dictionary
@@ -94,9 +102,10 @@ class GraphViz(object):
 
         # build connections
         for (idx1, idx2) in self.graph.edges:
+            e = self.edge2int[(idx1, idx2)]
             i1, i2 = self.node2int[idx1], self.node2int[idx2]
-            link_list[i1].add(i2)
-            link_list[i2].add(i1)
+            link_list[i1].add((e, i2))
+            link_list[i2].add((e, i1))
         self.adj_source = [list(itr) for itr in link_list]
 
     def sort_node_source(self):
@@ -236,7 +245,7 @@ class GraphViz(object):
         label1    , label2     = 'comic'  , 'hero'
         size_col1 , size_col2  = 'sign'   , 'pr'
         color_col1, color_col2 = '#appear', '#know'
-        palette1  , palette2   = Greens9  , Reds9
+        palette1  , palette2   = BuGn9    , YlOrRd9
 
         # get array masks
         mask1 = (node_data['label'] == label1).values
@@ -515,8 +524,11 @@ class GraphViz(object):
 
         # refresh node data for inspection and update convenience
         self.get_node_source_id()
+        self.get_edge_source_id()
         self.sort_node_source()
+
         self.get_node_source_id()
+        self.get_edge_source_id()
         self.get_adj_source_id()
 
         # set graph renderer details

@@ -1,6 +1,6 @@
 from viz.source import RawGraph, ProcessedBiGraph
 from viz.plot import GraphViz
-from viz.interact import GraphWidget
+from viz.interact import GraphWidget, BiGraphWidget
 from bokeh.plotting import curdoc
 
 
@@ -47,6 +47,5 @@ from bokeh.plotting import curdoc
 
 BG = ProcessedBiGraph()
 BG.load('data/viz.p')
-viz = GraphWidget(GraphViz(BG.major))
-# viz = GraphWidget(GraphViz(BG.minor))
+viz = BiGraphWidget(GraphWidget(GraphViz(BG.major)), GraphWidget(GraphViz(BG.minor)))
 curdoc().add_root(viz.layout)
