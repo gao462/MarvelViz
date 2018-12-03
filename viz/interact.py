@@ -1,11 +1,15 @@
+import re
 import numpy as np
 from bokeh.models import ColumnDataSource
 from bokeh.plotting import figure
 from bokeh.palettes import *
 from bokeh.models import LabelSet
 from bokeh.models.widgets import Div, CheckboxGroup, Slider, RangeSlider, Panel, Tabs
+from bokeh.models.glyphs import ImageURL
 from bokeh.layouts import row, column
 from decimal import Decimal
+from google_images_download import google_images_download
+from PIL import Image
 from .plot import GraphViz
 
 class GraphWidget(object):
@@ -179,9 +183,6 @@ class GraphWidget(object):
         # lock selection
         self.select_lock = True
 
-        # update the lastest selection statistics
-        self.select_to_pie_bar(self.node_source.selected.indices[-1])
-
         # get all adjacent neighbors of all selections
         roots = set(self.node_source.selected.indices)
         children = set([])
@@ -191,7 +192,10 @@ class GraphWidget(object):
                 children.add(leaf)
         
         # update selections
-        self.node_source.selected.indices = list(roots | children)
+        self.node_source.selected.indices = list(roots) + list((roots | children) - roots)
+
+        # update the lastest selection statistics
+        self.select_to_pie_bar(self.node_source.selected.indices[0])
 
         # unlock selection
         self.select_lock = False
@@ -640,6 +644,11 @@ class GraphWidget(object):
 
 class BiGraphWidget(object):
     # constants
+    DIV_W = 300
+    DIV_LINE_H = 10
+
+    IMG_W = 300
+    IMG_H = 300
 
     def __init__(self, major_inter, minor_inter):
         r"""Initialize the class
@@ -655,8 +664,95 @@ class BiGraphWidget(object):
         # aggregate two graph layout
         self.major_inter = major_inter
         self.minor_inter = minor_inter
+        self.inter_dict = dict(major=self.major_inter, minor=self.minor_inter)
+
+        # deploy selection's trigger
+        self.select_lock = False
+        self.major_inter.node_source.selected.on_change(
+            'indices', lambda attr, old, new: self.select('major'))
+        self.minor_inter.node_source.selected.on_change(
+            'indices', lambda attr, old, new: self.select('minor'))
+
+        # deploy tab
         layout_tab = Tabs(tabs=[
             Panel(child=self.major_inter.layout, title="Majority"),
             Panel(child=self.minor_inter.layout, title="Minority")])
 
-        self.layout = layout_tab
+        # deploy search tool and image
+        self.search_engine = google_images_download.googleimagesdownload()
+        self.img_()
+
+        # deploy info div
+        self.div_()
+
+        # configure layout
+        layout_info = column(self.layout_img, self.layout_div)
+        self.layout = row(layout_info, layout_tab)
+
+    def select(self, viz_part):
+        r"""Select data source based on graph states"""
+        # ignore recursive selection
+        if self.select_lock:
+            return
+        else:
+            pass
+
+        # lock selection
+        self.select_lock = True
+
+        # focus on active tab
+        viz_inter = self.inter_dict[viz_part]
+        node_data = viz_inter.node_data
+        edge_data = viz_inter.edge_data
+
+        # chech selection status
+        if len(viz_inter.node_source.selected.indices) == 0:
+            self.div_dict['name'].text = '(non-selection)'
+        else:
+            ind = viz_inter.node_source.selected.indices[0]
+            name = node_data.loc[ind, '_name']
+            search = re.split(r'\s*[^0-9a-zA-Z\s-]+\s*', name)[0]
+            self.div_dict['name'].text = name
+            self.image_url_data.data = dict(url=[self.search_engine.download(
+                dict(keywords="Marvel Comic {}".format(search), limit=1))])
+
+        # unlock selection
+        self.select_lock = False
+
+    def img_(self):
+        r"""Deploy image"""
+        # allocate url source
+        self.image_url_data = ColumnDataSource(dict(url=['(non-selection)']))
+
+        # create canvas
+        fig_image = figure(
+            width=self.IMG_W, height=self.IMG_H,
+            x_range=(-self.IMG_W // 2 - 1, self.IMG_W // 2 + 1),
+            y_range=(-self.IMG_H // 2 - 1, self.IMG_H // 2 + 1),
+            toolbar_location=None)
+        fig_image.axis.visible = False
+        fig_image.grid.visible = False
+
+        # create image
+        image_content = fig_image.image_url(
+            x=0, y=0, w=None, h=None, anchor="center", url='url', source=self.image_url_data)
+
+        # configure layout
+        self.layout_img = fig_image
+
+    def div_(self):
+        r"""Deploy info div"""
+        # generate widgets
+        name_title = Div(
+            width=self.DIV_W, height=self.DIV_LINE_H,
+            text='<b>Hero/Comic Name</b>')
+        name_content = Div(
+            width=self.DIV_W, height=self.DIV_LINE_H,
+            text='(non-selection)')
+
+        # broadcast changable widgets
+        self.div_dict = dict(
+            name=name_content)
+
+        # configure layout
+        self.layout_div = column(name_title, name_content)
