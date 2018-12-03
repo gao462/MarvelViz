@@ -315,37 +315,19 @@ class GraphViz(object):
 
         # --------------------------------------------------------------------------------
 
-        # get node fill alphas (selection)
-        criterion1 = node_data[color_col1].values
-        criterion2 = node_data[color_col2].values
-        fill_alpha_vals1 = self.rescale(criterion1, vmin=0.9, vmax=0.9, mask=mask1, mskval=0)
-        fill_alpha_vals2 = self.rescale(criterion2, vmin=0.9, vmax=0.9, mask=mask2, mskval=0)
-        fill_alpha_vals = fill_alpha_vals1 + fill_alpha_vals2
-        source.add(fill_alpha_vals, ':sel:fill_alpha')
-
-        # get node line alphas (selection)
-        criterion1 = node_data[color_col1].values
-        criterion2 = node_data[color_col2].values
-        line_alpha_vals1 = self.rescale(criterion1, vmin=0.9, vmax=0.9, mask=mask1, mskval=0)
-        line_alpha_vals2 = self.rescale(criterion2, vmin=0.9, vmax=0.9, mask=mask2, mskval=0)
-        line_alpha_vals = line_alpha_vals1 + line_alpha_vals2
-        source.add(line_alpha_vals, ':sel:line_alpha')
-
-        # --------------------------------------------------------------------------------
-
         # get node fill alphas (non-selection)
         criterion1 = node_data[color_col1].values
         criterion2 = node_data[color_col2].values
-        fill_alpha_vals1 = self.rescale(criterion1, vmin=0.1, vmax=0.1, mask=mask1, mskval=0)
-        fill_alpha_vals2 = self.rescale(criterion2, vmin=0.1, vmax=0.1, mask=mask2, mskval=0)
+        fill_alpha_vals1 = self.rescale(criterion1, vmin=0.01, vmax=0.01, mask=mask1, mskval=0)
+        fill_alpha_vals2 = self.rescale(criterion2, vmin=0.01, vmax=0.01, mask=mask2, mskval=0)
         fill_alpha_vals = fill_alpha_vals1 + fill_alpha_vals2
         source.add(fill_alpha_vals, ':nosel:fill_alpha')
 
         # get node line alphas (non-selection)
         criterion1 = node_data[color_col1].values
         criterion2 = node_data[color_col2].values
-        line_alpha_vals1 = self.rescale(criterion1, vmin=0.1, vmax=0.1, mask=mask1, mskval=0)
-        line_alpha_vals2 = self.rescale(criterion2, vmin=0.1, vmax=0.1, mask=mask2, mskval=0)
+        line_alpha_vals1 = self.rescale(criterion1, vmin=0.01, vmax=0.01, mask=mask1, mskval=0)
+        line_alpha_vals2 = self.rescale(criterion2, vmin=0.01, vmax=0.01, mask=mask2, mskval=0)
         line_alpha_vals = line_alpha_vals1 + line_alpha_vals2
         source.add(line_alpha_vals, ':nosel:line_alpha')
 
@@ -376,8 +358,8 @@ class GraphViz(object):
             marker=':shape', size=':size', fill_color=':fill_color', fill_alpha=':fill_alpha',
             line_color=':line_color', line_alpha=':line_alpha')
         self.renderer.node_renderer.selection_glyph = Scatter(
-            marker=':shape', size=':size', fill_color=':fill_color', fill_alpha=':sel:fill_alpha',
-            line_color=':line_color', line_alpha=':sel:line_alpha')
+            marker=':shape', size=':size', fill_color=':fill_color', fill_alpha=':fill_alpha',
+            line_color=':line_color', line_alpha=':line_alpha')
         self.renderer.node_renderer.nonselection_glyph = Scatter(
             marker=':shape', size=':size', fill_color=':fill_color',
             fill_alpha=':nosel:fill_alpha', line_color=':line_color',
@@ -437,21 +419,11 @@ class GraphViz(object):
 
         # --------------------------------------------------------------------------------
 
-        # get edge line alphas (selection)
-        criterion1 = edge_data[color_col1].values
-        criterion2 = edge_data[color_col2].values
-        line_alpha_vals1 = self.rescale(criterion1, vmin=0.9, vmax=0.9, mask=mask1, mskval=0)
-        line_alpha_vals2 = self.rescale(criterion2, vmin=0.9, vmax=0.9, mask=mask2, mskval=0)
-        line_alpha_vals = line_alpha_vals1 + line_alpha_vals2
-        source.add(line_alpha_vals, ':sel:line_alpha')
-
-        # --------------------------------------------------------------------------------
-
         # get edge line alphas (non-selection)
         criterion1 = edge_data[color_col1].values
         criterion2 = edge_data[color_col2].values
-        line_alpha_vals1 = self.rescale(criterion1, vmin=0.1, vmax=0.1, mask=mask1, mskval=0)
-        line_alpha_vals2 = self.rescale(criterion2, vmin=0.1, vmax=0.1, mask=mask2, mskval=0)
+        line_alpha_vals1 = self.rescale(criterion1, vmin=0.01, vmax=0.01, mask=mask1, mskval=0)
+        line_alpha_vals2 = self.rescale(criterion2, vmin=0.01, vmax=0.01, mask=mask2, mskval=0)
         line_alpha_vals = line_alpha_vals1 + line_alpha_vals2
         source.add(line_alpha_vals, ':nonsel:line_alpha')
 
@@ -481,7 +453,7 @@ class GraphViz(object):
         self.renderer.edge_renderer.glyph = MultiLine(
             line_width=':width', line_color=':line_color', line_alpha=':line_alpha')
         self.renderer.edge_renderer.selection_glyph = MultiLine(
-            line_width=':width', line_color=':line_color', line_alpha=':sel:line_alpha')
+            line_width=':width', line_color=':line_color', line_alpha=':line_alpha')
         self.renderer.edge_renderer.nonselection_glyph = MultiLine(
             line_width=':width', line_color=':line_color', line_alpha=':nonsel:line_alpha')
         self.renderer.edge_renderer.hover_glyph = MultiLine(
