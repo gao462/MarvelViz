@@ -5,9 +5,11 @@ from bokeh.plotting import figure
 from bokeh.palettes import *
 from bokeh.models import LabelSet
 from bokeh.models.widgets import Div, CheckboxGroup, Slider, RangeSlider, Panel, Tabs
+from bokeh.models import Button, TextInput
 from bokeh.models.glyphs import ImageURL
 from bokeh.layouts import row, column
 from decimal import Decimal
+import difflib
 from google_images_download import google_images_download
 from PIL import Image
 from .plot import GraphViz
@@ -51,7 +53,7 @@ class GraphWidget(object):
         self.adj_source = self.viz.adj_source
 
         # deploy selection's trigger
-        self.select_lock = False
+        self.select_lock = 0
         self.node_source.selected.on_change('indices', lambda attr, old, new: self.select())
 
         # deploy checkbox and its trigger
@@ -169,7 +171,7 @@ class GraphWidget(object):
     def select(self):
         r"""Select data source based on graph states"""
         # ignore recursive selection
-        if self.select_lock:
+        if self.select_lock != 0:
             return
         else:
             pass
@@ -181,7 +183,7 @@ class GraphWidget(object):
             pass
 
         # lock selection
-        self.select_lock = True
+        self.select_lock += 1
 
         # get all adjacent neighbors of all selections
         roots = set(self.node_source.selected.indices)
@@ -198,7 +200,7 @@ class GraphWidget(object):
         self.select_to_pie_bar(self.node_source.selected.indices[0])
 
         # unlock selection
-        self.select_lock = False
+        self.select_lock -= 1
 
     def select_to_pie_bar(self, idx):
         r"""Update pie and bar chart source by given index
@@ -644,6 +646,12 @@ class GraphWidget(object):
 
 class BiGraphWidget(object):
     # constants
+    BTN_W = 140
+    BTN_H = 20
+
+    TXT_W = 284
+    TXT_H = 30
+
     DIV_W = 300
     DIV_LINE_H = 10
 
@@ -674,9 +682,12 @@ class BiGraphWidget(object):
             'indices', lambda attr, old, new: self.select('minor'))
 
         # deploy tab
-        layout_tab = Tabs(tabs=[
+        self.layout_tab = Tabs(tabs=[
             Panel(child=self.major_inter.layout, title="Majority"),
             Panel(child=self.minor_inter.layout, title="Minority")])
+
+        # deploy text input
+        self.input_()
 
         # deploy search tool and image
         self.search_engine = google_images_download.googleimagesdownload()
@@ -686,38 +697,85 @@ class BiGraphWidget(object):
         self.div_()
 
         # configure layout
-        layout_info = column(self.layout_img, self.layout_div)
-        self.layout = row(layout_info, layout_tab)
+        layout_info = column(children=[self.layout_input, self.layout_img, self.layout_div])
+        self.layout = row(layout_info, self.layout_tab)
+
+    def find(self, *args, **kargs):
+        r"""Find the most similar node from all nodes"""
+        # get smilarity
+        buffer = []
+        for part in ('major', 'minor'):
+            node_data = self.inter_dict[part].node_data
+            for i in range(len(node_data)):
+                name = node_data.loc[i, '_name']
+                ratio = difflib.SequenceMatcher(None, self.input.value, name).ratio()
+                buffer.append((part, i, ratio))
+        buffer = sorted(buffer, reverse=True, key=lambda x: x[-1])
+
+        # activate selection
+        tab_id = dict(major=0, minor=1)
+        self.layout_tab.active = tab_id[buffer[0][0]]
+        self.inter_dict[buffer[0][0]].node_source.selected.indices = [buffer[0][1]]
+
+    def find_next(self, *args, **kargs):
+        r"""Goto next search item in buffer"""
+        pass
 
     def select(self, viz_part):
-        r"""Select data source based on graph states"""
-        # ignore recursive selection
-        if self.select_lock:
-            return
-        else:
-            pass
+        r"""Select data source based on graph states
+        
+        Args
+        ----
 
-        # lock selection
-        self.select_lock = True
-
+        """
         # focus on active tab
         viz_inter = self.inter_dict[viz_part]
         node_data = viz_inter.node_data
         edge_data = viz_inter.edge_data
 
+        # ignore recursive selection
+        if viz_inter.select_lock != 1:
+            return
+        else:
+            pass
+
+        # lock selection
+        self.select_lock += 1
+
         # chech selection status
         if len(viz_inter.node_source.selected.indices) == 0:
             self.div_dict['name'].text = '(non-selection)'
+            return
         else:
-            ind = viz_inter.node_source.selected.indices[0]
-            name = node_data.loc[ind, '_name']
-            search = re.split(r'\s*[^0-9a-zA-Z\s-]+\s*', name)[0]
-            self.div_dict['name'].text = name
-            self.image_url_data.data = dict(url=[self.search_engine.download(
-                dict(keywords="Marvel Comic {}".format(search), limit=1))])
+            pass
+
+        # appending action
+        ind = viz_inter.node_source.selected.indices[0]
+        name = node_data.loc[ind, '_name']
+        search = re.split(r'\s*[^0-9a-zA-Z\s-]+\s*', name)[0]
+        self.div_dict['name'].text = name
+        self.image_url_data.data = dict(url=[self.search_engine.download(
+            dict(keywords="Marvel Comic {}".format(search), limit=1))])
 
         # unlock selection
-        self.select_lock = False
+        self.select_lock -= 1
+
+    def input_(self):
+        r"""Deploy name input for searching"""
+        # generate widgets
+        self.button_search = Button(
+            width=self.BTN_W, height=self.BTN_H, label='Search', button_type='success')
+        self.button_next = Button(
+            width=self.BTN_W, height=self.BTN_H, label='Next', button_type='success')
+        self.input = TextInput(
+            width=self.TXT_W, height=self.TXT_H, value='', title='Searching Hero/Comic Name')
+
+        # set change hook
+        self.button_search.on_click(self.find)
+        self.button_next.on_click(self.find_next)
+
+        # configure layout
+        self.layout_input = column(self.input, row(self.button_search, self.button_next))
 
     def img_(self):
         r"""Deploy image"""
