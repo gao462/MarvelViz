@@ -401,7 +401,7 @@ class GraphWidget(object):
         # unselect other bar plot
         for itr in ('n_cont', 'n_coop', 'n_appear', 'n_know'):
             if itr != title:
-                getattr(self, "bar_source_{}".format(title)).selected.indices = []
+                getattr(self, "bar_source_{}".format(itr)).selected.indices = []
             else:
                 pass
 
