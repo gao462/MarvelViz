@@ -386,10 +386,28 @@ class GraphWidget(object):
         self.node_source.data = node_data.to_dict(orient='list')
         self.edge_source.data = edge_data.to_dict(orient='list')
 
-    def click(self, *args, **kargs):
+    def click(self, title):
         r"""Update selection by bar chart label clicking"""
-        print(args)
-        print(kargs)
+        # ignore recursive selection
+        if self.click_lock:
+            return
+        else:
+            pass
+
+        # lock all mouse interactions
+        self.click_lock = True
+        self.select_lock = 999
+
+        # unselect other bar plot
+        for itr in ('n_cont', 'n_coop', 'n_appear', 'n_know'):
+            if itr != title:
+                getattr(self, "bar_source_{}".format(title)).selected.indices = []
+            else:
+                pass
+
+        # unlock all mouse interactions
+        self.click_lock = False
+        self.select_lock = 0
 
     def checkbox_(self):
         r"""Deploy checkbox"""
@@ -651,14 +669,15 @@ class GraphWidget(object):
             source=self.bar_source_n_know, render_mode='canvas', text_align='center')
 
         # set change hook
+        self.click_lock = False
         self.bar_source_n_cont.selected.on_change(
-            'indices', lambda attr, old, new: self.click())
+            'indices', lambda attr, old, new: self.click(title='n_cont'))
         self.bar_source_n_coop.selected.on_change(
-            'indices', lambda attr, old, new: self.click())
+            'indices', lambda attr, old, new: self.click(title='n_coop'))
         self.bar_source_n_appear.selected.on_change(
-            'indices', lambda attr, old, new: self.click())
+            'indices', lambda attr, old, new: self.click(title='n_appear'))
         self.bar_source_n_know.selected.on_change(
-            'indices', lambda attr, old, new: self.click())
+            'indices', lambda attr, old, new: self.click(title='n_know'))
 
         # configure layout
         fig_n_cont.add_layout(label_n_cont)
