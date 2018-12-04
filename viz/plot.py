@@ -510,7 +510,7 @@ class GraphViz(object):
         # initialize plot
         self.plot = Plot(
             plot_width=self.PLOT_W, plot_height=self.PLOT_H, x_range=Range1d(xmin, xmax),
-            y_range=Range1d(ymin, ymax))
+            y_range=Range1d(ymin, ymax), toolbar_location='above')
 
         # set tools
         self.set_tools()

@@ -3,13 +3,13 @@ import numpy as np
 from bokeh.models import ColumnDataSource
 from bokeh.plotting import figure
 from bokeh.palettes import *
-from bokeh.models import LabelSet
+from bokeh.models import Range1d, LabelSet
 from bokeh.models.widgets import Div, CheckboxGroup, Slider, RangeSlider, Panel, Tabs
 from bokeh.models import Button, TextInput
 from bokeh.models.glyphs import ImageURL
 from bokeh.layouts import row, column
 from decimal import Decimal
-import difflib
+from fuzzywuzzy import fuzz
 from google_images_download import google_images_download
 from PIL import Image
 from .plot import GraphViz
@@ -156,17 +156,21 @@ class GraphWidget(object):
             raise RuntimeError()
 
         # get all break points
+        bias = max(-vals.min() * 2, 1) if vals.min() <= 0 else 0
+        vals = np.log(vals + bias)
         max_val = vals.max()
         min_val = vals.min()
         scale = (max_val - min_val) / (n - 1)
         breakpoints = [None for i in range(n + 1)]
-        breakpoints[0] = min_val - (max_val - min_val) * 0.01
+        breakpoints[0] = min_val
         for i in range(n):
             breakpoints[i + 1] = (0.5 + i) * scale + min_val
         breakpoints[n] = max_val
         breakpoints = np.linspace(min_val, max_val, num=n + 1, endpoint=True).tolist()
-        breakpoints[-1] += (max_val - min_val) * 0.01
-        return breakpoints
+        breakpoints = np.exp(breakpoints) - bias
+        breakpoints[0]  -= (max_val - min_val)
+        breakpoints[-1] += (max_val - min_val)
+        return breakpoints.tolist()
 
     def select(self):
         r"""Select data source based on graph states"""
@@ -233,7 +237,7 @@ class GraphWidget(object):
             for data, itr, col, bin_n, cnt_n in iter_list:
                 val = data[col].iloc[itr]
                 for i in range(1, len(bin_n)):
-                    if bin_n[i - 1] >= val and (val > bin_n[i] or i == len(bin_n) - 1):
+                    if bin_n[i - 1] >= val and (val > bin_n[i]):
                         cnt_n[i - 1] += 1
                         break
                     else:
@@ -381,6 +385,11 @@ class GraphWidget(object):
         # update the whole data source
         self.node_source.data = node_data.to_dict(orient='list')
         self.edge_source.data = edge_data.to_dict(orient='list')
+
+    def click(self, *args, **kargs):
+        r"""Update selection by bar chart label clicking"""
+        print(args)
+        print(kargs)
 
     def checkbox_(self):
         r"""Deploy checkbox"""
@@ -582,23 +591,27 @@ class GraphWidget(object):
         # create canvas
         fig_n_cont = figure(
             width=self.BAR_W, height=self.BAR_H,
+            tools="ypan,tap,ywheel_zoom", active_scroll='ywheel_zoom',
             title='Contribution Count in \"Comics Appears\"',
-            x_range=self.bar_source_n_cont.data['name'], y_range=(0, 45),
+            x_range=self.bar_source_n_cont.data['name'], y_range=Range1d(0, 100, bounds='auto'),
             toolbar_location=None)
         fig_n_coop = figure(
             width=self.BAR_W, height=self.BAR_H,
+            tools="ypan,tap,ywheel_zoom", active_scroll='ywheel_zoom',
             title='Cooperation Count with \"Heros Knows\"',
-            x_range=self.bar_source_n_coop.data['name'], y_range=(0, 100),
+            x_range=self.bar_source_n_coop.data['name'], y_range=Range1d(0, 100, bounds='auto'),
             toolbar_location=None)
         fig_n_appear = figure(
             width=self.BAR_W, height=self.BAR_H,
+            tools="ypan,tap,ywheel_zoom", active_scroll='ywheel_zoom',
             title='#Appear Count of \"Comics Appears\"',
-            x_range=self.bar_source_n_appear.data['name'], y_range=(0, 45),
+            x_range=self.bar_source_n_appear.data['name'], y_range=Range1d(0, 100, bounds='auto'),
             toolbar_location=None)
         fig_n_know = figure(
             width=self.BAR_W, height=self.BAR_H,
+            tools="ypan,tap,ywheel_zoom", active_scroll='ywheel_zoom',
             title='#Know Count of \"Heros Knows\"',
-            x_range=self.bar_source_n_know.data['name'], y_range=(0, 45),
+            x_range=self.bar_source_n_know.data['name'], y_range=Range1d(0, 100, bounds='auto'),
             toolbar_location=None)
         fig_n_cont.xaxis.visible = False
         fig_n_coop.xaxis.visible = False
@@ -637,6 +650,16 @@ class GraphWidget(object):
             x='name', y='count', text='count', level='glyph', x_offset=0, y_offset=0,
             source=self.bar_source_n_know, render_mode='canvas', text_align='center')
 
+        # set change hook
+        self.bar_source_n_cont.selected.on_change(
+            'indices', lambda attr, old, new: self.click())
+        self.bar_source_n_coop.selected.on_change(
+            'indices', lambda attr, old, new: self.click())
+        self.bar_source_n_appear.selected.on_change(
+            'indices', lambda attr, old, new: self.click())
+        self.bar_source_n_know.selected.on_change(
+            'indices', lambda attr, old, new: self.click())
+
         # configure layout
         fig_n_cont.add_layout(label_n_cont)
         fig_n_coop.add_layout(label_n_coop)
@@ -657,6 +680,9 @@ class BiGraphWidget(object):
 
     IMG_W = 300
     IMG_H = 300
+
+    DIST_W = 300
+    DIST_H = 300
 
     def __init__(self, major_inter, minor_inter):
         r"""Initialize the class
@@ -687,6 +713,7 @@ class BiGraphWidget(object):
             Panel(child=self.minor_inter.layout, title="Minority")])
 
         # deploy text input
+        self.find_buffer, self.find_ptr = [], 0
         self.input_()
 
         # deploy search tool and image
@@ -696,36 +723,69 @@ class BiGraphWidget(object):
         # deploy info div
         self.div_()
 
+        # deploy dist plot
+        self.dist_()
+
         # configure layout
-        layout_info = column(children=[self.layout_input, self.layout_img, self.layout_div])
+        layout_info = column(
+            children=[self.layout_input, self.layout_img, self.layout_div, self.layout_dist])
         self.layout = row(layout_info, self.layout_tab)
 
     def find(self, *args, **kargs):
         r"""Find the most similar node from all nodes"""
         # get smilarity
-        buffer = []
+        self.find_buffer = []
         for part in ('major', 'minor'):
             node_data = self.inter_dict[part].node_data
             for i in range(len(node_data)):
                 name = node_data.loc[i, '_name']
-                ratio = difflib.SequenceMatcher(None, self.input.value, name).ratio()
-                buffer.append((part, i, ratio))
-        buffer = sorted(buffer, reverse=True, key=lambda x: x[-1])
+                ratio = fuzz.partial_ratio(self.input.value, name)
+                self.find_buffer.append((part, i, name, ratio))
+        self.find_buffer = sorted(self.find_buffer, reverse=True, key=lambda x: x[-1])
+        self.find_ptr = 0
 
         # activate selection
         tab_id = dict(major=0, minor=1)
-        self.layout_tab.active = tab_id[buffer[0][0]]
-        self.inter_dict[buffer[0][0]].node_source.selected.indices = [buffer[0][1]]
+        self.layout_tab.active = tab_id[self.find_buffer[self.find_ptr][0]]
+        viz_inter = self.inter_dict[self.find_buffer[self.find_ptr][0]]
+        root = self.find_buffer[self.find_ptr][1]
+        branches = [itr for itr, _ in viz_inter.adj_source[root]]
+        leaves = [itr for _, itr in viz_inter.adj_source[root]]
+        viz_inter.node_source.selected.indices = [root]
+        viz_inter.edge_source.selected.indices = branches
 
     def find_next(self, *args, **kargs):
         r"""Goto next search item in buffer"""
-        pass
+        # check validation
+        if len(self.find_buffer) == 0 or \
+           self.find_buffer[self.find_ptr][-1] < 80:
+            return
+        else:
+            self.find_ptr += 1
+
+        if (self.find_ptr >= len(self.find_buffer)) or \
+           self.find_buffer[self.find_ptr][-1] < 80:
+            return
+        else:
+            pass
+
+        # activate selection
+        tab_id = dict(major=0, minor=1)
+        self.layout_tab.active = tab_id[self.find_buffer[self.find_ptr][0]]
+        viz_inter = self.inter_dict[self.find_buffer[self.find_ptr][0]]
+        root = self.find_buffer[self.find_ptr][1]
+        branches = [itr for itr, _ in viz_inter.adj_source[root]]
+        leaves = [itr for _, itr in viz_inter.adj_source[root]]
+        viz_inter.node_source.selected.indices = [root]
+        viz_inter.edge_source.selected.indices = branches
 
     def select(self, viz_part):
         r"""Select data source based on graph states
         
         Args
         ----
+        viz_part : str
+            Tab string identifier being selected.
 
         """
         # focus on active tab
@@ -752,10 +812,18 @@ class BiGraphWidget(object):
         # appending action
         ind = viz_inter.node_source.selected.indices[0]
         name = node_data.loc[ind, '_name']
+        sign = node_data.loc[ind, 'sign']
+        pr = node_data.loc[ind, 'pr']
+        n_appear = node_data.loc[ind, '#appear']
+        n_know = node_data.loc[ind, '#know']
         search = re.split(r'\s*[^0-9a-zA-Z\s-]+\s*', name)[0]
-        self.div_dict['name'].text = name
         self.image_url_data.data = dict(url=[self.search_engine.download(
             dict(keywords="Marvel Comic {}".format(search), limit=1))])
+        self.div_dict['name'].text = name
+        self.div_dict['sign'].text = "{:.8f}".format(sign)
+        self.div_dict['pr'].text = "{:.8f}".format(pr)
+        self.div_dict['n_appear'].text = "{:d}".format(int(n_appear))
+        self.div_dict['n_know'].text = "{:d}".format(int(n_know))
 
         # unlock selection
         self.select_lock -= 1
@@ -807,10 +875,137 @@ class BiGraphWidget(object):
         name_content = Div(
             width=self.DIV_W, height=self.DIV_LINE_H,
             text='(non-selection)')
+        sign_title = Div(
+            width=self.DIV_W // 2, height=self.DIV_LINE_H,
+            text='<b>PageRank</b>')
+        sign_content = Div(
+            width=self.DIV_W // 2, height=self.DIV_LINE_H,
+            text='(non-selection)')
+        pr_title = Div(
+            width=self.DIV_W // 2, height=self.DIV_LINE_H,
+            text='<b>PageRank</b>')
+        pr_content = Div(
+            width=self.DIV_W // 2, height=self.DIV_LINE_H,
+            text='(non-selection)')
+        n_appear_title = Div(
+            width=self.DIV_W // 2, height=self.DIV_LINE_H,
+            text='<b>#Appear</b>')
+        n_appear_content = Div(
+            width=self.DIV_W // 2, height=self.DIV_LINE_H,
+            text='(non-selection)')
+        n_know_title = Div(
+            width=self.DIV_W // 2, height=self.DIV_LINE_H,
+            text='<b>#Know</b>')
+        n_know_content = Div(
+            width=self.DIV_W // 2, height=self.DIV_LINE_H,
+            text='(non-selection)')
 
         # broadcast changable widgets
         self.div_dict = dict(
-            name=name_content)
+            name=name_content, sign=sign_content, pr=pr_content, n_appear=n_appear_content,
+            n_know=n_know_content)
 
         # configure layout
-        self.layout_div = column(name_title, name_content)
+        name_info = column(name_title, name_content)
+        sign_info = column(sign_title, sign_content)
+        pr_info = column(pr_title, pr_content)
+        n_appear_info = column(n_appear_title, n_appear_content)
+        n_know_info = column(n_know_title, n_know_content)
+        self.layout_div = column(
+            name_info, row(sign_info, pr_info), row(n_appear_info, n_know_info))
+
+    def cut_count_node_bins(self, n, col, label):
+        """Cut and count given column of all node data into given number of bins
+
+        Args
+        ----
+        n : int
+            Number of bins.
+        col : str
+            Column name to divide.
+        label : str
+            Node label to select from.
+
+        Returns
+        -------
+        edges : [float, ...]
+            A list of lower bound of each bins.
+        count : [int, ...]
+            Count of samples in each bin.
+
+        """
+        # get all data
+        data1 = self.major_inter.node_data
+        data2 = self.minor_inter.node_data
+        data1 = data1[data1['label'] == label]
+        data2 = data2[data2['label'] == label]
+        data1 = data1[col].values
+        data2 = data2[col].values
+        data = np.concatenate([data1, data2], axis=0)
+
+        # get bins
+        log_data = np.log(data)
+        max_val = log_data.max()
+        min_val = log_data.min()
+        scale = (max_val - min_val) / (n - 1)
+        breakpoints = [None for i in range(n + 1)]
+        breakpoints[0] = min_val
+        for i in range(n):
+            breakpoints[i + 1] = (0.5 + i) * scale + min_val
+        breakpoints[n] = max_val
+        breakpoints = np.linspace(min_val, max_val, num=n + 1, endpoint=True).tolist()
+        breakpoints[0]  -= (max_val - min_val)
+        breakpoints[-1] += (max_val - min_val)
+        breakpoints.reverse()
+        breakpoints = np.exp(breakpoints).tolist()
+
+        # count bins
+        count = [0 for i in range(len(breakpoints) - 1)]
+        for i in range(len(count)):
+            count[i] = ((breakpoints[i] >= data) & (data > breakpoints[i + 1])).sum()
+        return breakpoints, count
+
+    def dist_(self):
+        r"""Deploy dist plot"""
+        # get bins and counts
+        sign_edge, sign_count = self.cut_count_node_bins(10, col='sign', label='comic')
+        pr_edge  , pr_count   = self.cut_count_node_bins(10, col='pr'  , label='hero')
+        sign_avg = [np.sqrt(sign_edge[i] * sign_edge[i + 1]) for i in range(len(sign_count))]
+        pr_avg   = [np.sqrt(pr_edge[i]   * pr_edge[i + 1]  ) for i in range(len(pr_count))]
+
+        # transfer to data source
+        source_sign = ColumnDataSource(dict(
+            count=sign_count, fill_color=Plasma11[0:10],
+            name=["{:.2E}".format(Decimal(itr)) for itr in sign_avg]))
+        source_pr = ColumnDataSource(dict(
+            count=pr_count, fill_color=Viridis11[0:10],
+            name=["{:.2E}".format(Decimal(itr)) for itr in pr_avg]))
+
+        # create canvas
+        fig_sign = figure(
+            width=self.DIST_W, height=self.DIST_H, title='Comic Significance Distribution Plot',
+            y_range=source_sign.data['name'],
+            x_range=(0, int(max(source_sign.data['count']) * 1.1)),
+            toolbar_location=None)
+        fig_pr = figure(
+            width=self.DIST_W, height=self.DIST_H, title='Hero PageRank Distribution Plot',
+            y_range=source_pr.data['name'],
+            x_range=(0, int(max(source_pr.data['count']) * 1.1)),
+            toolbar_location=None)
+
+        # bar and line plot
+        bar_sign = fig_sign.hbar(
+            y='name', right='count', height=0.85, fill_color='fill_color', line_color='white',
+            source=source_sign)
+        bar_pr = fig_pr.hbar(
+            y='name', right='count', height=0.85, fill_color='fill_color', line_color='white',
+            source=source_pr)
+        line_sign = fig_sign.line(y='name', x='count', line_color='black', source=source_sign)
+        line_pr = fig_pr.line(y='name', x='count', line_color='black', source=source_pr)
+
+        # reset legend location
+        # fig_sign.legend.location = 'center_right'
+        # fig_pr.legend.location = 'center_right'
+
+        # configure layout
+        self.layout_dist = column(fig_sign, fig_pr)
