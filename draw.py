@@ -6,8 +6,6 @@ from bokeh.plotting import curdoc
 
 G = RawGraph()
 G.preprocess_hero_name('data')
-
-G = RawGraph()
 G.from_raw('data')
 G.save('data/raw_graph.p')
  

@@ -212,7 +212,7 @@ class RawGraph(object):
                     raise RuntimeError()
                 sign = self.graph.nodes[vname]['sign']
                 deg = self.graph.nodes[vname]['#appear']
-                self.graph.edges[vpair]['cont'] = sign / deg
+                self.graph.edges[vpair]['cont'] = 1 / deg
             else:
                 pass
         print('Update Contribution -- [Done]')
