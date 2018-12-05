@@ -187,18 +187,18 @@ class GraphWidget(object):
         self.select_lock += 1
 
         # get all adjacent neighbors of all selections
-        roots = set(self.node_source.selected.indices)
-        children = set([])
-        for root in roots:
-            leaves = self.adj_source[root]
-            for _, leaf in leaves:
-                children.add(leaf)
+        root = self.node_source.selected.indices[0]
+        branches, leaves = [], []
+        for branch, leaf in self.adj_source[root]:
+            branches.append(branch)
+            leaves.append(leaf)
         
         # update selections
-        self.node_source.selected.indices = list(roots) + list((roots | children) - roots)
+        self.node_source.selected.indices = [root] + leaves
+        self.edge_source.selected.indices = branches
 
         # update the lastest selection statistics
-        self.select_to_pie_bar(self.node_source.selected.indices[0])
+        self.select_to_pie_bar(root)
 
         # unlock selection
         self.select_lock -= 1
@@ -386,14 +386,14 @@ class GraphWidget(object):
     def click(self, title):
         r"""Update selection by bar chart label clicking"""
         # ignore recursive selection
-        if self.click_lock:
+        if self.click_lock != 0:
             return
         else:
             pass
 
         # lock all mouse interactions
-        self.click_lock = True
-        self.select_lock = 999
+        self.click_lock += 1
+        self.select_lock = 9 # large enough number
 
         # unselect other bar plot
         for itr in ('n_cont', 'n_coop', 'n_appear', 'n_know'):
@@ -404,9 +404,8 @@ class GraphWidget(object):
 
         # get all adjacent neighbors of all selections
         root = self.node_source.selected.indices[0]
-        pairs = self.adj_source[root]
         branches, leaves = [], []
-        for branch, leaf in pairs:
+        for branch, leaf in self.adj_source[root]:
             if title == 'n_cont' and len(self.bar_source_n_cont.selected.indices) > 0:
                 correct = (self.edge_data['mode'].iloc[branch] == 'appear')
                 idx = self.bar_source_n_cont.selected.indices[0]
@@ -443,7 +442,7 @@ class GraphWidget(object):
         self.edge_source.selected.indices = branches
 
         # unlock all mouse interactions
-        self.click_lock = False
+        self.click_lock -= 1
         self.select_lock = 0
 
     def checkbox_(self):
@@ -706,7 +705,7 @@ class GraphWidget(object):
             source=self.bar_source_n_know, render_mode='canvas', text_align='center')
 
         # set change hook
-        self.click_lock = False
+        self.click_lock = 0
         self.bar_source_n_cont.selected.on_change(
             'indices', lambda attr, old, new: self.click(title='n_cont'))
         self.bar_source_n_coop.selected.on_change(
@@ -800,15 +799,30 @@ class BiGraphWidget(object):
         self.find_buffer = sorted(self.find_buffer, reverse=True, key=lambda x: x[-1])
         self.find_ptr = 0
 
-        # activate selection
+        # activate focusing tab
         tab_id = dict(major=0, minor=1)
         self.layout_tab.active = tab_id[self.find_buffer[self.find_ptr][0]]
         viz_inter = self.inter_dict[self.find_buffer[self.find_ptr][0]]
+
+        # lock selection
+        viz_inter.select_lock += 1
+
+        # get all adjacent neighbors of all selections
         root = self.find_buffer[self.find_ptr][1]
-        branches = [itr for itr, _ in viz_inter.adj_source[root]]
-        leaves = [itr for _, itr in viz_inter.adj_source[root]]
-        viz_inter.node_source.selected.indices = [root]
+        branches, leaves = [], []
+        for branch, leaf in viz_inter.adj_source[root]:
+            branches.append(branch)
+            leaves.append(leaf)
+        
+        # update selections
+        viz_inter.node_source.selected.indices = [root] + leaves
         viz_inter.edge_source.selected.indices = branches
+
+        # update the lastest selection statistics
+        viz_inter.select_to_pie_bar(root)
+
+        # unlock selection
+        viz_inter.select_lock -= 1
 
     def find_next(self, *args, **kargs):
         r"""Goto next search item in buffer"""
@@ -825,15 +839,30 @@ class BiGraphWidget(object):
         else:
             pass
 
-        # activate selection
+        # activate focusing tab
         tab_id = dict(major=0, minor=1)
         self.layout_tab.active = tab_id[self.find_buffer[self.find_ptr][0]]
         viz_inter = self.inter_dict[self.find_buffer[self.find_ptr][0]]
+
+        # lock selection
+        viz_inter.select_lock += 1
+
+        # get all adjacent neighbors of all selections
         root = self.find_buffer[self.find_ptr][1]
-        branches = [itr for itr, _ in viz_inter.adj_source[root]]
-        leaves = [itr for _, itr in viz_inter.adj_source[root]]
-        viz_inter.node_source.selected.indices = [root]
+        branches, leaves = [], []
+        for branch, leaf in viz_inter.adj_source[root]:
+            branches.append(branch)
+            leaves.append(leaf)
+        
+        # update selections
+        viz_inter.node_source.selected.indices = [root] + leaves
         viz_inter.edge_source.selected.indices = branches
+
+        # update the lastest selection statistics
+        viz_inter.select_to_pie_bar(root)
+
+        # unlock selection
+        viz_inter.select_lock -= 1
 
     def select(self, viz_part):
         r"""Select data source based on graph states
@@ -856,7 +885,7 @@ class BiGraphWidget(object):
             pass
 
         # lock selection
-        self.select_lock += 1
+        viz_inter.select_lock += 1
 
         # chech selection status
         if len(viz_inter.node_source.selected.indices) == 0:
@@ -865,16 +894,20 @@ class BiGraphWidget(object):
         else:
             pass
 
-        # appending action
+        # get attributes
         ind = viz_inter.node_source.selected.indices[0]
         name = node_data.loc[ind, '_name']
         sign = node_data.loc[ind, 'sign']
         pr = node_data.loc[ind, 'pr']
         n_appear = node_data.loc[ind, '#appear']
         n_know = node_data.loc[ind, '#know']
+
+        # get image url and show
         search = re.split(r'\s*[^0-9a-zA-Z\s-]+\s*', name)[0]
         self.image_url_data.data = dict(url=[self.search_engine.download(
-            dict(keywords="Marvel Comic {}".format(search), limit=1))])
+            dict(keywords="Marvel {}".format(search), limit=1))])
+
+        # show attributes
         self.div_dict['name'].text = name
         self.div_dict['sign'].text = "{:.8f}".format(sign)
         self.div_dict['pr'].text = "{:.8f}".format(pr)
@@ -882,7 +915,7 @@ class BiGraphWidget(object):
         self.div_dict['n_know'].text = "{:d}".format(int(n_know))
 
         # unlock selection
-        self.select_lock -= 1
+        viz_inter.select_lock -= 1
 
     def input_(self):
         r"""Deploy name input for searching"""
@@ -933,7 +966,7 @@ class BiGraphWidget(object):
             text='(non-selection)')
         sign_title = Div(
             width=self.DIV_W // 2, height=self.DIV_LINE_H,
-            text='<b>PageRank</b>')
+            text='<b>Significance</b>')
         sign_content = Div(
             width=self.DIV_W // 2, height=self.DIV_LINE_H,
             text='(non-selection)')
@@ -1058,10 +1091,6 @@ class BiGraphWidget(object):
             source=source_pr)
         line_sign = fig_sign.line(y='name', x='count', line_color='black', source=source_sign)
         line_pr = fig_pr.line(y='name', x='count', line_color='black', source=source_pr)
-
-        # reset legend location
-        # fig_sign.legend.location = 'center_right'
-        # fig_pr.legend.location = 'center_right'
 
         # configure layout
         self.layout_dist = column(fig_sign, fig_pr)

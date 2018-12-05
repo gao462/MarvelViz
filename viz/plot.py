@@ -369,8 +369,7 @@ class GraphViz(object):
             fill_alpha=':hover:fill_alpha', line_color=':line_color',
             line_alpha=':line_alpha')
 
-        # reset node policies
-        self.renderer.selection_policy = NodesAndLinkedEdges()
+        # reset node policies (no idea to control inspection from Python side)
         self.renderer.inspection_policy = NodesAndLinkedEdges()
 
     def set_edges(self):
