@@ -155,9 +155,7 @@ class GraphWidget(object):
         else:
             raise RuntimeError()
 
-        # get all break points
-        bias = max(-vals.min() * 2, 1) if vals.min() <= 0 else 0
-        vals = np.log(vals + bias)
+        # get all break points without log
         max_val = vals.max()
         min_val = vals.min()
         scale = (max_val - min_val) / (n - 1)
@@ -167,10 +165,9 @@ class GraphWidget(object):
             breakpoints[i + 1] = (0.5 + i) * scale + min_val
         breakpoints[n] = max_val
         breakpoints = np.linspace(min_val, max_val, num=n + 1, endpoint=True).tolist()
-        breakpoints = np.exp(breakpoints) - bias
         breakpoints[0]  -= (max_val - min_val)
         breakpoints[-1] += (max_val - min_val)
-        return breakpoints.tolist()
+        return breakpoints
 
     def select(self):
         r"""Select data source based on graph states"""
@@ -404,6 +401,46 @@ class GraphWidget(object):
                 getattr(self, "bar_source_{}".format(itr)).selected.indices = []
             else:
                 pass
+
+        # get all adjacent neighbors of all selections
+        root = self.node_source.selected.indices[0]
+        pairs = self.adj_source[root]
+        branches, leaves = [], []
+        for branch, leaf in pairs:
+            if title == 'n_cont' and len(self.bar_source_n_cont.selected.indices) > 0:
+                correct = (self.edge_data['mode'].iloc[branch] == 'appear')
+                idx = self.bar_source_n_cont.selected.indices[0]
+                bins = self.bin_n_cont
+                val = self.edge_data['cont'].iloc[branch]
+            elif title == 'n_coop' and len(self.bar_source_n_coop.selected.indices) > 0:
+                correct = (self.edge_data['mode'].iloc[branch] == 'know')
+                idx = self.bar_source_n_coop.selected.indices[0]
+                bins = self.bin_n_coop
+                val = self.edge_data['coop'].iloc[branch]
+            elif title == 'n_appear' and len(self.bar_source_n_appear.selected.indices) > 0:
+                correct = (self.node_data['label'].iloc[leaf] == 'comic')
+                idx = self.bar_source_n_appear.selected.indices[0]
+                bins = self.bin_n_appear
+                val = self.node_data['#appear'].iloc[leaf]
+            elif title == 'n_know' and len(self.bar_source_n_know.selected.indices) > 0:
+                correct = (self.node_data['label'].iloc[leaf] == 'hero')
+                idx = self.bar_source_n_know.selected.indices[0]
+                bins = self.bin_n_know
+                val = self.node_data['#know'].iloc[leaf]
+            else:
+                correct = True
+                idx = 0
+                bins = [1, -1]
+                val = 0
+            if correct and (bins[idx] >= val) and (val > bins[idx + 1]):
+                branches.append(branch)
+                leaves.append(leaf)
+            else:
+                pass
+        
+        # update selections
+        self.node_source.selected.indices = [root] + leaves
+        self.edge_source.selected.indices = branches
 
         # unlock all mouse interactions
         self.click_lock = False
@@ -648,11 +685,11 @@ class GraphWidget(object):
             x='name', top='count', width=0.85, fill_color='fill_color', fill_alpha='fill_alpha',
             line_color='white', source=self.bar_source_n_coop)
         bar_n_appear = fig_n_appear.vbar(
-            x='name', top='count', width=0.85, fill_color='fill_color', line_color='white',
-            source=self.bar_source_n_appear)
+            x='name', top='count', width=0.85, fill_color='fill_color', fill_alpha=0.85,
+            line_color='white', source=self.bar_source_n_appear)
         bar_n_know = fig_n_know.vbar(
-            x='name', top='count', width=0.85, fill_color='fill_color', line_color='white',
-            source=self.bar_source_n_know)
+            x='name', top='count', width=0.85, fill_color='fill_color', fill_alpha=0.85,
+            line_color='white', source=self.bar_source_n_know)
         
         # create label
         label_n_cont = LabelSet(
