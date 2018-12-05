@@ -1,8 +1,10 @@
 import os
+from collections import defaultdict
 import pickle
 import numpy as np
 import pandas as pd
 import networkx as nx
+from fuzzywuzzy import fuzz
 
 
 class RawGraph(object):
@@ -11,12 +13,6 @@ class RawGraph(object):
         r"""Initialize the class"""
         self.graph = None
         self.pr = None
-
-    def clean_hero_name(self, name):
-        r"""Fix some typo in hero name"""
-        while name[-1] == '/':
-            name = name[:-1]
-        return name
 
     def preprocess_hero_name(self, root='data'):
         r"""Prepocess hero names
@@ -27,70 +23,86 @@ class RawGraph(object):
             Root folder of raw data.
 
         """
-        # function specialized libraries
-        import re
-        from difflib import SequenceMatcher
-        from collections import defaultdict
-        
-        # generate name list
-        if not os.path.isfile(os.path.join(root, '_name_list.p')):
-            # allocate hero name set
-            name_set = set([])
+        # // # allocate hero name set
+        # // name_set = set([])
+        # // # load names into set
+        # // print('Load appear.csv')
+        # // appear_df = pd.read_csv(os.path.join(root, 'appear.csv'))
+        # // for i, row in appear_df.iterrows():
+        # //     name_set.add(row['hero'])
+        # // print('Load know.csv')
+        # // know_df = pd.read_csv(os.path.join(root, 'know.csv'))
+        # // for i, row in know_df.iterrows():
+        # //     name_set.add(row['hero1'])
+        # //     name_set.add(row['hero2'])
+        # // # save name list
+        # // file = open(os.path.join(root, '_name_list.p'), 'wb')
+        # // pickle.dump(sorted(list(name_set)), file)
+        # // file.close()
 
-            # load names into set
-            print('Load appear.csv')
-            appear_df = pd.read_csv(os.path.join(root, 'appear.csv'))
-            for i, row in appear_df.iterrows():
-                name_set.add(row['hero'])
-    
-            print('Load know.csv')
-            know_df = pd.read_csv(os.path.join(root, 'know.csv'))
-            for i, row in know_df.iterrows():
-                name_set.add(row['hero1'])
-                name_set.add(row['hero2'])
-    
-            # save name list
-            file = open(os.path.join(root, '_name_list.p'), 'wb')
-            pickle.dump(sorted(list(name_set)), file)
-            file.close()
-        else:
-            pass
+        # // # load name list
+        # // file = open(os.path.join(root, '_name_list.p'), 'rb')
+        # // name_list = pickle.load(file)
+        # // file.close()
+        # // # allocate distance dictionary
+        # // dist_dict = {name: {} for name in name_list}
+        # // # fill in distance symmetrically
+        # // print('Compute Name Distance')
+        # // step = int(len(name_list) / 25.)
+        # // for i in range(len(name_list)):
+        # //     name1 = name_list[i]
+        # //     for j in range(i + 1, len(name_list)):
+        # //         name2 = name_list[j]
+        # //         dist = fuzz.ratio(name1, name2)
+        # //         dist_dict[name1][name2] = dist
+        # //         dist_dict[name2][name1] = dist
+        # //     if (i + 1) % step == 0:
+        # //         print("Compute Name Distance -- [{:>4d}/{:<4d}]".format(i + 1, len(name_list)))
+        # //     else:
+        # //         pass
+        # // print('Compute Name Distance -- [Done]')
+        # // # save distance dictionary
+        # // file = open(os.path.join(root, '_name_dist.p'), 'wb')
+        # // pickle.dump(dist_dict, file)
+        # // file.close()
 
-        # generate name distance
-        if not os.path.isfile(os.path.join(root, '_name_dist.p')):
-            # load name list
-            file = open(os.path.join(root, '_name_list.p'), 'rb')
-            name_list = pickle.load(file)
-            file.close()
+        # // # load name list
+        # // file = open(os.path.join(root, '_name_list.p'), 'rb')
+        # // name_list = pickle.load(file)
+        # // file.close()
+        # // # load distance dictionary
+        # // file = open(os.path.join(root, '_name_dist.p'), 'rb')
+        # // name_dist = pickle.load(file)
+        # // file.close()
+        # // # allocate name father
+        # // print('Init Father')
+        # // name_fath = {name: name for name in name_list}
+        # // for i in range(len(name_list)):
+        # //     for j in range(i + 1, len(name_list)):
+        # //         if name_dist[name_list[i]][name_list[j]] > 90:
+        # //             name_fath[name_list[j]] = name_list[i]
+        # //         else:
+        # //             pass
+        # // print('Init Father -- [Done]')
+        # // # compress in reversed order to avoid looping
+        # // print('Compress Father')
+        # // name_list.reverse()
+        # // for name in name_fath:
+        # //     while name_fath[name] != name_fath[name_fath[name]]:
+        # //         name_fath[name] = name_fath[name_fath[name]]
+        # // print('Compress Father -- [Done]')
+        # // # truncate useless space char
+        # // for name in name_fath:
+        # //     name_fath[name] = name_fath[name].strip()
+        # // # save name father
+        # // file = open(os.path.join(root, '_name_fath.p'), 'wb')
+        # // pickle.dump(name_fath, file)
+        # // file.close()
 
-            # allocate distance dictionary
-            print('Compute Name Distance')
-            step = int(len(name_list) / 25.)
-            dist_dict = defaultdict(dict)
-            for i in range(len(name_list)):
-                name1 = name_list[i]
-                cand1 = re.split(r'\s*[/|]\s*', name1.strip())
-                for j in range(i + 1, len(name_list)):
-                    name2 = name_list[j]
-                    cand2 = re.split(r'\s*[/|]\s*', name2.strip())
-                    sim_list = []
-                    for k in range(len(cand1)):
-                        for l in range(len(cand2)):
-                            sim_list.append(SequenceMatcher(None, cand1[k], cand2[l]).ratio())
-                    dist_dict[name1][name2] = min(sim_list)
-                    dist_dict[name2][name1] = min(sim_list)
-                if (i + 1) % step == 0:
-                    print("Compute Name Distance -- [{:>4d}/{:<4d}]".format(i + 1, len(name_list)))
-                else:
-                    pass
-            print('Compute Name Distance -- [Done]')
-
-            # save distance dictionary
-            file = open(os.path.join(root, '_name_dist.p'), 'wb')
-            pickle.dump(dist_dict, file)
-            file.close()
-        else:
-            pass
+        # load name father
+        file = open(os.path.join(root, '_name_fath.p'), 'rb')
+        self.name_fath = pickle.load(file)
+        file.close()
 
     def from_raw(self, root='data'):
         r"""Initialize the class
@@ -110,7 +122,7 @@ class RawGraph(object):
         for i, row in appear_df.iterrows():
             label1, label2 = 'hero', 'comic'
             name1, name2 = row[label1], row[label2]
-            name1 = self.clean_hero_name(name1)
+            name1 = self.name_fath[name1]
             name1 = "{}_{}".format(label1, name1)
             name2 = "{}_{}".format(label2, name2)
             mode = 'appear'
@@ -129,8 +141,8 @@ class RawGraph(object):
         for i, row in know_df.iterrows():
             label1, label2 = 'hero', 'hero'
             name1, name2 = row[label1 + '1'], row[label2 + '2']
-            name1 = self.clean_hero_name(name1)
-            name2 = self.clean_hero_name(name2)
+            name1 = self.name_fath[name1]
+            name2 = self.name_fath[name2]
             name1 = "{}_{}".format(label1, name1)
             name2 = "{}_{}".format(label2, name2)
             mode = 'know'

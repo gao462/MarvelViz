@@ -14,6 +14,7 @@ from google_images_download import google_images_download
 from PIL import Image
 from .plot import GraphViz
 
+
 class GraphWidget(object):
     r"""Graph Interaction Widget"""
     # constants
