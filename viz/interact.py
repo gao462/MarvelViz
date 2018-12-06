@@ -898,6 +898,7 @@ class BiGraphWidget(object):
         # get attributes
         ind = viz_inter.node_source.selected.indices[0]
         name = node_data.loc[ind, '_name']
+        label = node_data.loc[ind, 'label']
         sign = node_data.loc[ind, 'sign']
         pr = node_data.loc[ind, 'pr']
         n_appear = node_data.loc[ind, '#appear']
@@ -914,6 +915,41 @@ class BiGraphWidget(object):
         self.div_dict['pr'].text = "{:.8f}".format(pr)
         self.div_dict['n_appear'].text = "{:d}".format(int(n_appear))
         self.div_dict['n_know'].text = "{:d}".format(int(n_know))
+
+        # Surround selected bar of dist plot
+        white_space = ['white' for i in range(10)]
+        width_space = [1 for i in range(10)]
+        if label == 'comic':
+            for i in range(len(self.dist_bins_sign) - 1):
+                if self.dist_bins_sign[i] >= sign and sign > self.dist_bins_sign[i + 1]:
+                    idx = i
+                else:
+                    pass
+            white_space[idx], width_space[idx] = 'green', 6
+            self.dist_source_sign.patch(dict(
+                line_color=[(slice(10), white_space)],
+                line_width=[(slice(10), width_space)]))
+        else:
+            self.dist_source_sign.patch(dict(
+                line_color=[(slice(10), white_space)],
+                line_width=[(slice(10), width_space)]))
+
+        white_space = ['white' for i in range(10)]
+        width_space = [1 for i in range(10)]
+        if label == 'hero':
+            for i in range(len(self.dist_bins_pr) - 1):
+                if self.dist_bins_pr[i] >= pr and pr > self.dist_bins_pr[i + 1]:
+                    idx = i
+                else:
+                    pass
+            white_space[idx], width_space[idx] = 'red', 6
+            self.dist_source_pr.patch(dict(
+                line_color=[(slice(10), white_space)],
+                line_width=[(slice(10), width_space)]))
+        else:
+            self.dist_source_pr.patch(dict(
+                line_color=[(slice(10), white_space)],
+                line_width=[(slice(10), width_space)]))
 
         # unlock selection
         viz_inter.select_lock -= 1
@@ -1062,36 +1098,42 @@ class BiGraphWidget(object):
         pr_edge  , pr_count   = self.cut_count_node_bins(10, col='pr'  , label='hero')
         sign_avg = [np.sqrt(sign_edge[i] * sign_edge[i + 1]) for i in range(len(sign_count))]
         pr_avg   = [np.sqrt(pr_edge[i]   * pr_edge[i + 1]  ) for i in range(len(pr_count))]
+        self.dist_bins_sign = sign_edge
+        self.dist_bins_pr = pr_edge
 
         # transfer to data source
-        source_sign = ColumnDataSource(dict(
+        self.dist_source_sign = ColumnDataSource(dict(
             count=sign_count, fill_color=Plasma11[0:10],
+            line_color=['white'] * 10, line_width=[1] * 10,
             name=["{:.2E}".format(Decimal(itr)) for itr in sign_avg]))
-        source_pr = ColumnDataSource(dict(
+        self.dist_source_pr = ColumnDataSource(dict(
             count=pr_count, fill_color=Viridis11[0:10],
+            line_color=['white'] * 10, line_width=[1] * 10,
             name=["{:.2E}".format(Decimal(itr)) for itr in pr_avg]))
 
         # create canvas
         fig_sign = figure(
             width=self.DIST_W, height=self.DIST_H, title='Comic Significance Distribution Plot',
-            y_range=source_sign.data['name'],
-            x_range=(0, int(max(source_sign.data['count']) * 1.1)),
+            y_range=self.dist_source_sign.data['name'],
+            x_range=(0, int(max(self.dist_source_sign.data['count']) * 1.1)),
             toolbar_location=None)
         fig_pr = figure(
             width=self.DIST_W, height=self.DIST_H, title='Hero PageRank Distribution Plot',
-            y_range=source_pr.data['name'],
-            x_range=(0, int(max(source_pr.data['count']) * 1.1)),
+            y_range=self.dist_source_pr.data['name'],
+            x_range=(0, int(max(self.dist_source_pr.data['count']) * 1.1)),
             toolbar_location=None)
 
         # bar and line plot
         bar_sign = fig_sign.hbar(
-            y='name', right='count', height=0.85, fill_color='fill_color', line_color='white',
-            source=source_sign)
+            y='name', right='count', height=0.85, fill_color='fill_color',
+            line_color='line_color', line_width='line_width', source=self.dist_source_sign)
         bar_pr = fig_pr.hbar(
-            y='name', right='count', height=0.85, fill_color='fill_color', line_color='white',
-            source=source_pr)
-        line_sign = fig_sign.line(y='name', x='count', line_color='black', source=source_sign)
-        line_pr = fig_pr.line(y='name', x='count', line_color='black', source=source_pr)
+            y='name', right='count', height=0.85, fill_color='fill_color',
+            line_color='line_color', line_width='line_width', source=self.dist_source_pr)
+        line_sign = fig_sign.line(
+            y='name', x='count', line_color='black', source=self.dist_source_sign)
+        line_pr = fig_pr.line(
+            y='name', x='count', line_color='black', source=self.dist_source_pr)
 
         # configure layout
         self.layout_dist = column(fig_sign, fig_pr)
