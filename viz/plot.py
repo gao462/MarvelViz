@@ -80,6 +80,7 @@ class GraphViz(object):
         for idx1, idx2 in graph.edges:
             graph.edges[(idx1, idx2)]['label_name1'] = graph.nodes[idx1]['label_name']
             graph.edges[(idx1, idx2)]['label_name2'] = graph.nodes[idx2]['label_name']
+            graph.edges[(idx1, idx2)]['cont'] = np.log(graph.edges[(idx1, idx2)]['cont'] + 1e-10)
 
     def get_node_source_id(self):
         r"""Get data source indices of all nodes in the graph"""
